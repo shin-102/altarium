@@ -26,6 +26,7 @@ declare global {
     seekTo(seconds: number, allowSeekAhead: boolean): void;
     getCurrentTime():                                 number;
     getDuration():                                    number;
+    setVolume(volume: number):                        void;
   }
   interface YTPlayerOptions {
     events?: {
@@ -44,18 +45,19 @@ function fmt(s: number): string {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
-// ── YouTube player component ──────────────────────────────────────────────────
-// Encapsulates the iframe + all player state so no refs leak into the parent.
+// ── useYTPlayer hook ──────────────────────────────────────────────────────────
 
 interface YTPlayerHandle {
   loadVideo(videoId: string): void;
-  togglePlay():                void;
-  seek(delta: number):         void;
-  toggleLoop():                void;
+  togglePlay():               void;
+  seek(delta: number):        void;
+  toggleLoop():               void;
+  setYtVolume(v: number):     void;
   playing:     boolean;
   loop:        boolean;
   duration:    number;
   currentTime: number;
+  ytVolume:    number;
   iframeContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -69,6 +71,7 @@ function useYTPlayer(): YTPlayerHandle {
   const [loop,        setLoop]        = useState(false);
   const [duration,    setDuration]    = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [ytVolume,    setYtVolumeState] = useState(0.5);
 
   useEffect(() => { loopRef.current = loop; }, [loop]);
 
@@ -86,9 +89,7 @@ function useYTPlayer(): YTPlayerHandle {
 
       playerRef.current = new window.YT.Player(iframe, {
         events: {
-          onReady() {
-            // Optional: setDuration(playerRef.current.getDuration());
-          },
+          onReady() {},
           onStateChange(e: { data: number; target: YTPlayer }) {
             const S = window.YT.PlayerState;
             if (e.data === S.PLAYING) {
@@ -139,7 +140,6 @@ function useYTPlayer(): YTPlayerHandle {
 
   const togglePlay = () => {
     if (!playerRef.current) return;
-    // FIXED: Use if/else instead of naked ternary expression
     if (playing) {
       playerRef.current.pauseVideo();
     } else {
@@ -154,53 +154,51 @@ function useYTPlayer(): YTPlayerHandle {
 
   const toggleLoop = () => setLoop((l) => !l);
 
+  const setYtVolume = (v: number) => {
+    setYtVolumeState(v);
+    playerRef.current?.setVolume(v * 100); // YT API expects 0–100
+  };
+
   return {
-    playing, loop, duration, currentTime,
-    loadVideo, togglePlay, seek, toggleLoop,
-    iframeContainerRef
+    playing, loop, duration, currentTime, ytVolume,
+    loadVideo, togglePlay, seek, toggleLoop, setYtVolume,
+    iframeContainerRef,
   };
 }
 
-// 2. Export the container to be used in the JSX
-export function YTContainer({ containerRef }: { containerRef: React.RefObject<HTMLDivElement> }) {
-  return (
-    <div
-      ref={containerRef}
-      aria-hidden="true"
-      style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
-    />
-  );
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function AmbientPanel() {
-  const [tab, setTab] = useState<Tab>("ambient");
-  const [current, setCurrent] = useState<SoundId | null>(null);
-  const [volume, setVolume] = useState(0.5);
-  const [urlInput, setUrlInput] = useState("");
-  const [activeVideo, setActiveVideo] = useState<YTMeta | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState("");
+  const [tab,        setTab]        = useState<Tab>("ambient");
+  const [current,    setCurrent]    = useState<SoundId | null>(null);
+  const [ambVolume,  setAmbVolume]  = useState(0.5);
+  const [urlInput,   setUrlInput]   = useState("");
+  const [activeVideo,setActiveVideo]= useState<YTMeta | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [loadError,  setLoadError]  = useState("");
 
-  // FIXED: Use the hook instead of redefining all the logic here
   const {
-    playing, loop, duration, currentTime,
-    loadVideo, togglePlay, seek, toggleLoop,
-    iframeContainerRef
+    playing, loop, duration, currentTime, ytVolume,
+    loadVideo, togglePlay, seek, toggleLoop, setYtVolume,
+    iframeContainerRef,
   } = useYTPlayer();
 
   const progress = activeVideo && duration > 0 ? (currentTime / duration) * 100 : 0;
 
   useEffect(() => () => ambient.stop(), []);
 
+  // Ambient sound controls
   const toggleSound = (id: SoundId) => {
     if (current === id) { ambient.stop(); setCurrent(null); }
-    else { ambient.play(id); setCurrent(id); }
+    else                { ambient.play(id); setCurrent(id); }
   };
 
-  const setVol = (v: number) => { setVolume(v); ambient.setVolume(v); };
+  const handleAmbVolume = (v: number) => {
+    setAmbVolume(v);
+    ambient.setVolume(v);
+  };
 
+  // YouTube URL loading
   const loadUrl = async () => {
     const id = extractVideoId(urlInput.trim());
     if (!id) { setLoadError("Couldn't find a video ID in that URL."); return; }
@@ -219,7 +217,7 @@ export function AmbientPanel() {
 
   return (
     <Dialog.Root modal={false}>
-      {/* Hidden container — always in the DOM, never conditional */}
+      {/* Hidden YT iframe container — always in DOM */}
       <div
         ref={iframeContainerRef}
         aria-hidden="true"
@@ -291,16 +289,17 @@ export function AmbientPanel() {
                 })}
               </div>
 
+              {/* Ambient volume */}
               <div className="flex items-center gap-3">
                 <Volume2 className="h-4 w-4 text-white/40 shrink-0" />
                 <input
                   type="range" min={0} max={1} step={0.01}
-                  value={volume}
-                  onChange={(e) => setVol(parseFloat(e.target.value))}
+                  value={ambVolume}
+                  onChange={(e) => handleAmbVolume(parseFloat(e.target.value))}
                   className="flex-1 accent-white h-1 cursor-pointer"
                 />
                 <span className="text-[11px] text-white/40 min-w-7 text-right">
-                  {Math.round(volume * 100)}%
+                  {Math.round(ambVolume * 100)}%
                 </span>
               </div>
             </div>
@@ -391,16 +390,17 @@ export function AmbientPanel() {
                 </>
               )}
 
+              {/* YouTube volume */}
               <div className="flex items-center gap-3 pt-1">
                 <Volume2 className="h-4 w-4 text-white/40 shrink-0" />
                 <input
                   type="range" min={0} max={1} step={0.01}
-                  value={volume}
-                  onChange={(e) => setVol(parseFloat(e.target.value))}
+                  value={ytVolume}
+                  onChange={(e) => setYtVolume(parseFloat(e.target.value))}
                   className="flex-1 accent-white h-1 cursor-pointer"
                 />
                 <span className="text-[11px] text-white/40 min-w-7 text-right">
-                  {Math.round(volume * 100)}%
+                  {Math.round(ytVolume * 100)}%
                 </span>
               </div>
             </div>

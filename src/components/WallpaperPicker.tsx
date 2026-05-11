@@ -34,8 +34,14 @@ export function WallpaperPicker({ current, onSelect }: Props) {
   const [open, setOpen] = useState(false);
 
   const select = (w: Wallpaper) => {
-    onSelect(w);
+    // Retains the current rain toggle state even when changing wallpapers.
+    // If you prefer wallpapers to reset to their default rain state, just pass `w` instead.
+    onSelect({ ...w, rain: current.rain });
     setOpen(false);
+  };
+
+  const toggleRain = () => {
+    onSelect({ ...current, rain: !current.rain });
   };
 
   return (
@@ -74,23 +80,8 @@ export function WallpaperPicker({ current, onSelect }: Props) {
             Select a theme to set the mood of your workspace.
           </p>
 
-          {/* Gradient moods */}
-          <p className="text-[10px] uppercase tracking-[0.18em] text-white/35 mb-3">
-            Moods
-          </p>
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            {gradients.map((w) => (
-              <WallpaperCard
-                key={w.id}
-                wallpaper={w}
-                isActive={w.id === current.id}
-                onSelect={select}
-              />
-            ))}
-          </div>
-
-          {/* Real photos */}
-          <p className="text-[10px] uppercase tracking-[0.18em] text-white/35 mb-3">
+          {/* Real photos (Full Cards) */}
+          <p className="text-[10px] uppercase tracking-[0.18em] text-white/35 my-3">
             Photos
           </p>
           <div className="grid grid-cols-3 gap-3">
@@ -104,6 +95,46 @@ export function WallpaperPicker({ current, onSelect }: Props) {
             ))}
           </div>
 
+          {/* Gradient moods (Simple Circles) */}
+          <p className="text-[10px] uppercase tracking-[0.18em] text-white/35 my-3">
+            Moods
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 mb-6">
+            {gradients.map((w) => (
+              <MoodCircle
+                key={w.id}
+                wallpaper={w}
+                isActive={w.id === current.id}
+                onSelect={select}
+              />
+            ))}
+          </div>
+
+          {/* Rain Toggle Element */}
+          <div className="mt-6 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+            <div>
+              <h4 className="text-sm font-medium text-white">Rain Overlay</h4>
+              <p className="text-xs text-white/50 mt-0.5">Add falling rain to your current background</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={current.rain || false}
+              onClick={toggleRain}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                current.rain ? "bg-blue-500" : "bg-white/20"
+              )}
+            >
+              <span className="sr-only">Toggle rain</span>
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                  current.rain ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+
           <Dialog.Description className="sr-only">
             Choose a wallpaper or mood theme for your workspace background.
           </Dialog.Description>
@@ -113,6 +144,43 @@ export function WallpaperPicker({ current, onSelect }: Props) {
   );
 }
 
+{/* New MoodCircle Component */}
+function MoodCircle({
+  wallpaper,
+  isActive,
+  onSelect,
+}: {
+  wallpaper: Wallpaper;
+  isActive: boolean;
+  onSelect: (w: Wallpaper) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        onClick={() => onSelect(wallpaper)}
+        className={cn(
+          "group relative h-14 w-14 overflow-hidden rounded-full transition-all shrink-0",
+          isActive
+            ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-900"
+            : "ring-1 ring-white/10 hover:ring-white/30"
+        )}
+      >
+        <WallpaperThumb wallpaper={wallpaper} className="group-hover:scale-110" />
+
+        {isActive && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <Check className="h-5 w-5 text-white drop-shadow-md stroke-3" />
+          </div>
+        )}
+      </button>
+      <span className="text-[10px] font-medium text-white/70 text-center leading-tight">
+        {wallpaper.name}
+      </span>
+    </div>
+  );
+}
+
+{/* Original WallpaperCard Component */}
 function WallpaperCard({
   wallpaper,
   isActive,

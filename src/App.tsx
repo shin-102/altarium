@@ -6,14 +6,17 @@ import { WallpaperPicker } from './components/WallpaperPicker';
 import { DistractionPanel } from './components/DistractionPanel';
 import { AmbientPanel } from './components/AmbientPanel';
 import { Clock } from './components/Clock';
+import IntroScreen, { shouldShowIntro } from "./components/IntroScreen";
 
 function App() {
   const [wp, setWp] = useState(WALLPAPERS[0]);
   const visible = useAutoHide(5000);
   const cls = `auto-hide ${visible ? "" : "auto-hide-hidden"}`;
+  const [showIntro, setShowIntro] = useState(shouldShowIntro);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
+    {showIntro && <IntroScreen onDone={() => setShowIntro(false)} />}
       <WallpaperLayer wallpaper={wp} />
 
       {/* Top-right: Utility/Settings */}
